@@ -9,6 +9,7 @@ import {
   getProject,
   getSession,
   setAutoApprove,
+  clearSession,
 } from "../db/database.js";
 import { getConfig } from "../utils/config.js";
 import { L } from "../utils/i18n.js";
@@ -388,6 +389,19 @@ class SessionManager {
       }
       const rawMsg =
         error instanceof Error ? error.message : "Unknown error occurred";
+
+      // If session resume failed (stale session), clear it and retry fresh
+      if (rawMsg.includes("No conversation found with session ID")) {
+        console.warn(`[session] Stale session for ${channelId}, clearing and retrying fresh`);
+        clearSession(channelId);
+        clearInterval(heartbeatInterval);
+        this.sessions.delete(channelId);
+        try {
+          await currentMessage.edit({ content: L("🔄 Session expired, starting fresh...", "🔄 세션이 만료되어 새로 시작합니다..."), components: [] });
+        } catch {}
+        await this.sendMessage(channel, prompt);
+        return;
+      }
 
       // Parse API error JSON to show clean message
       let errMsg = rawMsg;
