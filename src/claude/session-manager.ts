@@ -432,7 +432,7 @@ class SessionManager {
     if (!resumeSessionId) {
       messageChannel.push({
         type: "user",
-        message: { role: "user", content: "." },
+        message: { role: "user", content: "Hi" },
         parent_tool_use_id: null,
       });
     }
