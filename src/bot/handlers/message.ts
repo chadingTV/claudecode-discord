@@ -42,8 +42,16 @@ async function downloadAttachment(
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  const fileName = `${Date.now()}-${attachment.name}`;
+  // Sanitize filename: extract basename and strip path separators to prevent traversal
+  const safeName = (attachment.name ?? "file").replace(/[/\\]/g, "_").replace(/\.\./g, "_");
+  const fileName = `${Date.now()}-${safeName}`;
   const filePath = path.join(uploadDir, fileName);
+
+  // Defense in depth: verify resolved path stays within uploadDir
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(uploadDir) + path.sep)) {
+    return { skipped: L(`Blocked: \`${attachment.name}\` (invalid filename)`, `차단됨: \`${attachment.name}\` (잘못된 파일명)`) };
+  }
 
   try {
     const response = await fetch(attachment.url);
