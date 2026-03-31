@@ -12,6 +12,7 @@ import { handleMessage } from "./handlers/message.js";
 import { handleButtonInteraction, handleSelectMenuInteraction } from "./handlers/interaction.js";
 import { isAllowedUser } from "../security/guard.js";
 import { getAllProjects, unregisterProject } from "../db/database.js";
+import { cleanupProjectFiles } from "../utils/cleanup.js";
 import { L } from "../utils/i18n.js";
 
 // Import commands
@@ -181,6 +182,7 @@ function cleanupOrphanedProjects(client: Client, guildId: string): void {
   let cleaned = 0;
   for (const project of projects) {
     if (!guild.channels.cache.has(project.channel_id)) {
+      cleanupProjectFiles(project.project_path);
       unregisterProject(project.channel_id);
       cleaned++;
     }

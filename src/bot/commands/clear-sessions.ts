@@ -4,11 +4,9 @@ import {
   PermissionFlagsBits,
   TextChannel,
 } from "discord.js";
-import fs from "node:fs";
-import path from "node:path";
 import { getProject, clearSession } from "../../db/database.js";
 import { sessionManager } from "../../claude/session-manager.js";
-import { findSessionDir } from "./sessions.js";
+import { cleanupProjectFiles } from "../../utils/cleanup.js";
 import { L } from "../../utils/i18n.js";
 
 export const data = new SlashCommandBuilder()
@@ -34,20 +32,8 @@ export async function execute(
     await sessionManager.stopSession(channelId);
   }
 
-  // Delete session JSONL files if directory exists
-  let deleted = 0;
-  const sessionDir = findSessionDir(project.project_path);
-  if (sessionDir) {
-    const files = fs.readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
-    for (const file of files) {
-      try {
-        fs.unlinkSync(path.join(sessionDir, file));
-        deleted++;
-      } catch {
-        // skip files that can't be deleted
-      }
-    }
-  }
+  // Delete session files, session directory, and uploaded files
+  const cleaned = cleanupProjectFiles(project.project_path);
 
   // Clear the session record from DB so the bot doesn't try to resume a deleted session
   clearSession(channelId);
@@ -82,7 +68,12 @@ export async function execute(
         title: L("Sessions Cleared", "세션 정리됨"),
         description: [
           `Project: \`${project.project_path}\``,
-          L(`Deleted **${deleted}** session file(s)`, `**${deleted}**개의 세션 파일이 삭제되었습니다`),
+          cleaned.sessionDir
+            ? L("Session directory deleted", "세션 디렉토리 삭제됨")
+            : L("No session directory found", "세션 디렉토리 없음"),
+          cleaned.uploads
+            ? L("Uploads directory deleted", "업로드 디렉토리 삭제됨")
+            : L("No uploads directory found", "업로드 디렉토리 없음"),
           L(`Cleared **${messagesDeleted}** message(s)`, `**${messagesDeleted}**개의 메시지를 삭제했습니다`),
         ].join("\n"),
         color: 0xff6b6b,
