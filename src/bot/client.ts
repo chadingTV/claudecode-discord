@@ -27,8 +27,12 @@ import * as usageCmd from "./commands/usage.js";
 import * as modelCmd from "./commands/model.js";
 import * as contextCmd from "./commands/context.js";
 import * as mcpCmd from "./commands/mcp.js";
+import * as configCmd from "./commands/config.js";
+import * as skillsCmd from "./commands/skills.js";
+import * as modelsCmd from "./commands/models.js";
+import * as agentsCmd from "./commands/agents.js";
 
-const commands = [startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd];
+const commands = [startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd, configCmd, skillsCmd, modelsCmd, agentsCmd];
 const commandMap = new Collection<
   string,
   { execute: (interaction: ChatInputCommandInteraction) => Promise<void> }
