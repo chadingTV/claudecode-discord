@@ -115,3 +115,15 @@ export function getAllSessions(guildId: string): (Session & { project_path: stri
     `)
     .all(guildId) as (Session & { project_path: string })[];
 }
+
+// Model per channel
+export function setModel(channelId: string, model: string | null): void {
+  try { db.exec("ALTER TABLE projects ADD COLUMN model TEXT DEFAULT NULL"); } catch {}
+  db.prepare("UPDATE projects SET model = ? WHERE channel_id = ?").run(model, channelId);
+}
+
+export function getModel(channelId: string): string | null {
+  try { db.exec("ALTER TABLE projects ADD COLUMN model TEXT DEFAULT NULL"); } catch {}
+  const row = db.prepare("SELECT model FROM projects WHERE channel_id = ?").get(channelId) as { model: string | null } | undefined;
+  return row?.model ?? null;
+}

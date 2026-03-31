@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { TextChannel } from "discord.js";
 import {
+  getModel,
   upsertSession,
   updateSessionStatus,
   getProject,
@@ -107,11 +108,13 @@ class SessionManager {
     }, 15_000);
 
     try {
+      const channelModel = getModel(channelId);
       const queryInstance = query({
         prompt,
         options: {
           cwd: project.project_path,
           permissionMode: "default",
+          ...(channelModel ? { model: channelModel } : {}),
           env: { ...process.env, ANTHROPIC_API_KEY: undefined, PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ""}` },
           ...(resumeSessionId ? { resume: resumeSessionId } : {}),
 
