@@ -61,7 +61,7 @@ async function main() {
   // Sync built-in skills to ~/.claude/commands/
   const skillsSource = path.resolve(process.cwd(), "skills");
   if (fs.existsSync(skillsSource)) {
-    const targetDir = path.join(os.homedir(), ".claude", "commands");
+    const targetDir = path.join(os.homedir(), ".claude", "skills");
     fs.mkdirSync(targetDir, { recursive: true });
     for (const file of fs.readdirSync(skillsSource)) {
       if (!file.endsWith(".md")) continue;
