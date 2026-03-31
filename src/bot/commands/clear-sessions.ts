@@ -28,33 +28,22 @@ export async function execute(
     return;
   }
 
-  const sessionDir = findSessionDir(project.project_path);
-  if (!sessionDir) {
-    await interaction.editReply({
-      content: L(`No session directory found for \`${project.project_path}\``, `\`${project.project_path}\`에 대한 세션 디렉토리를 찾을 수 없습니다`),
-    });
-    return;
-  }
-
-  const files = fs.readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
-  if (files.length === 0) {
-    await interaction.editReply({
-      content: L("No session files to delete.", "삭제할 세션 파일이 없습니다."),
-    });
-    return;
-  }
-
+  // Delete session JSONL files if directory exists
   let deleted = 0;
-  for (const file of files) {
-    try {
-      fs.unlinkSync(path.join(sessionDir, file));
-      deleted++;
-    } catch {
-      // skip files that can't be deleted
+  const sessionDir = findSessionDir(project.project_path);
+  if (sessionDir) {
+    const files = fs.readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+    for (const file of files) {
+      try {
+        fs.unlinkSync(path.join(sessionDir, file));
+        deleted++;
+      } catch {
+        // skip files that can't be deleted
+      }
     }
   }
 
-  // Also clear the session record from DB so the bot doesn't try to resume a deleted session
+  // Clear the session record from DB so the bot doesn't try to resume a deleted session
   clearSession(channelId);
 
   // Clear channel messages (bulk delete only works for messages <14 days old)

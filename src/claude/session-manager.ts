@@ -173,9 +173,9 @@ class SessionManager {
     const dbId = dbSession?.id ?? randomUUID();
     const resumeSessionId = dbSession?.session_id ?? undefined;
 
-    const session = this.createSession(channel, project.project_path, dbId, resumeSessionId);
-    await this.waitForInit(session);
-    return session;
+    // Don't await init here — the SDK may need the first message push before emitting init.
+    // Callers that need the session ready (sdkCall) wait for init themselves.
+    return this.createSession(channel, project.project_path, dbId, resumeSessionId);
   }
 
   private static readonly INIT_TIMEOUT = 60_000; // 60s max wait for session init
@@ -765,12 +765,14 @@ class SessionManager {
   }
 
   /**
-   * Call an SDK method with a timeout. If it hangs (zombie session), clean up and return null.
+   * Call an SDK method with a timeout. If it hangs (zombie session), clean up,
+   * recreate the session, and retry once.
    */
-  private async sdkCall<T>(channelId: string, fn: (q: Query) => Promise<T>): Promise<T | null> {
+  private async sdkCall<T>(channelId: string, fn: (q: Query) => Promise<T>, retried = false): Promise<T | null> {
     const session = this.sessions.get(channelId);
     if (!session) return null;
     try {
+      await this.waitForInit(session);
       return await Promise.race([
         fn(session.queryInstance),
         new Promise<never>((_, reject) =>
@@ -780,8 +782,17 @@ class SessionManager {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === "SDK call timed out") {
-        console.warn(`[session] SDK call timed out for ${channelId}, cleaning up zombie session`);
-        this.stopSession(channelId);
+        console.warn(`[session] SDK call timed out for ${channelId}${retried ? " (retry)" : ""}, cleaning up`);
+        await this.stopSession(channelId);
+        if (!retried && session.channel) {
+          console.log(`[session] Retrying SDK call for ${channelId} with fresh session`);
+          try {
+            await this.ensureSession(session.channel);
+            return this.sdkCall(channelId, fn, true);
+          } catch {
+            return null;
+          }
+        }
       }
       return null;
     }
