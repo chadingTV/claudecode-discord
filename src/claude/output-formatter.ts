@@ -4,6 +4,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
+  AttachmentBuilder,
 } from "discord.js";
 import { L } from "../utils/i18n.js";
 
@@ -249,23 +250,37 @@ export function createAskUserQuestionEmbed(
   return { embed, components };
 }
 
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
+  return tokens.toString();
+}
+
 export function createResultEmbed(
   result: string,
-  costUsd: number,
+  inputTokens: number,
+  outputTokens: number,
   durationMs: number,
-  showCost: boolean = true,
-): EmbedBuilder {
+): { embed: EmbedBuilder; file?: AttachmentBuilder } {
   const duration = `${(durationMs / 1000).toFixed(1)}s`;
-  const footer = showCost
-    ? `${L("Cost (est.)", "비용 (추정)")} : $${costUsd.toFixed(4)}  |  ${L("Duration", "소요 시간")} : ${duration}`
-    : `${L("Duration", "소요 시간")} : ${duration}`;
+  const totalTokens = inputTokens + outputTokens;
+  const footer = `${L("Tokens", "토큰")} : ${formatTokens(totalTokens)} (↑${formatTokens(inputTokens)} ↓${formatTokens(outputTokens)})  |  ${L("Duration", "소요 시간")} : ${duration}`;
+
+  const needsFile = result.length > 4000;
+  const description = needsFile
+    ? result.slice(0, 3900) + `\n\n${L("... Full result attached as file", "... 전체 결과가 파일로 첨부됨")}`
+    : result;
 
   const embed = new EmbedBuilder()
     .setTitle(L("✅ Task Complete", "✅ 작업 완료"))
-    .setDescription(result.slice(0, 4000))
+    .setDescription(description)
     .setColor(0x00ff00)
     .setFooter({ text: footer })
     .setTimestamp();
 
-  return embed;
+  const file = needsFile
+    ? new AttachmentBuilder(Buffer.from(result, "utf-8"), { name: "result.txt" })
+    : undefined;
+
+  return { embed, file };
 }

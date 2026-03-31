@@ -90,6 +90,8 @@ export async function handleButtonInteraction(
     const sessionId = requestId;
     const channelId = interaction.channelId;
     const { randomUUID } = await import("node:crypto");
+    // Close existing in-memory session before switching
+    await sessionManager.stopSession(channelId);
     upsertSession(randomUUID(), channelId, sessionId, "idle");
 
     await interaction.update({
@@ -375,6 +377,8 @@ export async function handleSelectMenuInteraction(
     if (selectedSessionId === "__new_session__") {
       const channelId = interaction.channelId;
       const { randomUUID } = await import("node:crypto");
+      // Close existing in-memory session before starting fresh
+      await sessionManager.stopSession(channelId);
       // Set session_id to null so next message creates a fresh session
       upsertSession(randomUUID(), channelId, null, "idle");
 

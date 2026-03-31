@@ -182,31 +182,36 @@ describe("createToolApprovalEmbed", () => {
 // ─── createResultEmbed ───
 
 describe("createResultEmbed", () => {
-  it("shows cost in footer when showCost is true", () => {
-    const embed = createResultEmbed("Done", 0.0123, 5000, true);
+  it("shows token usage in footer", () => {
+    const { embed } = createResultEmbed("Done", 50000, 5000, 5000);
     const footer = embed.data.footer?.text ?? "";
-    expect(footer).toContain("Cost");
-    expect(footer).toContain("$0.0123");
+    expect(footer).toContain("Tokens");
+    expect(footer).toContain("55.0K");
+    expect(footer).toContain("↑50.0K");
+    expect(footer).toContain("↓5.0K");
     expect(footer).toContain("Duration");
     expect(footer).toContain("5.0s");
   });
 
-  it("hides cost in footer when showCost is false", () => {
-    const embed = createResultEmbed("Done", 0.0123, 5000, false);
-    const footer = embed.data.footer?.text ?? "";
-    expect(footer).not.toContain("Cost");
-    expect(footer).toContain("Duration : 5.0s");
-  });
-
   it("formats duration correctly", () => {
-    const embed = createResultEmbed("Done", 0, 12500, true);
+    const { embed } = createResultEmbed("Done", 0, 0, 12500);
     const footer = embed.data.footer?.text ?? "";
     expect(footer).toContain("12.5s");
   });
 
-  it("truncates very long result text to 4000 chars", () => {
-    const embed = createResultEmbed("x".repeat(5000), 0, 0);
+  it("returns no file for short results", () => {
+    const { embed, file } = createResultEmbed("short", 0, 0, 0);
+    expect(embed.data.description).toBe("short");
+    expect(file).toBeUndefined();
+  });
+
+  it("attaches txt file for results over 4000 chars", () => {
+    const longText = "x".repeat(5000);
+    const { embed, file } = createResultEmbed(longText, 0, 0, 0);
     expect(embed.data.description!.length).toBeLessThanOrEqual(4000);
+    expect(embed.data.description).toContain("Full result attached");
+    expect(file).toBeDefined();
+    expect(file!.name).toBe("result.txt");
   });
 });
 

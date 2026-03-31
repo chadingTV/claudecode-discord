@@ -1,7 +1,8 @@
 import { Message, TextChannel, Attachment, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-import { getProject } from "../../db/database.js";
+import { getProject, registerProject } from "../../db/database.js";
 import { isAllowedUser, checkRateLimit } from "../../security/guard.js";
 import { sessionManager } from "../../claude/session-manager.js";
+import { getConfig } from "../../utils/config.js";
 import fs from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -41,8 +42,16 @@ async function downloadAttachment(
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  const fileName = `${Date.now()}-${attachment.name}`;
+  // Sanitize filename: extract basename and strip path separators to prevent traversal
+  const safeName = (attachment.name ?? "file").replace(/[/\\]/g, "_").replace(/\.\./g, "_");
+  const fileName = `${Date.now()}-${safeName}`;
   const filePath = path.join(uploadDir, fileName);
+
+  // Defense in depth: verify resolved path stays within uploadDir
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(uploadDir) + path.sep)) {
+    return { skipped: L(`Blocked: \`${attachment.name}\` (invalid filename)`, `차단됨: \`${attachment.name}\` (잘못된 파일명)`) };
+  }
 
   try {
     const response = await fetch(attachment.url);
@@ -64,14 +73,17 @@ export async function handleMessage(message: Message): Promise<void> {
   // Ignore bots and DMs
   if (message.author.bot || !message.guild) return;
 
-  // Check if channel is registered
-  const project = getProject(message.channelId);
-  if (!project) return;
+  // Auth check (before auto-register to prevent unauthorized registration)
+  if (!isAllowedUser(message.author.id)) return;
 
-  // Auth check
-  if (!isAllowedUser(message.author.id)) {
-    await message.reply(L("You are not authorized to use this bot.", "이 봇을 사용할 권한이 없습니다."));
-    return;
+  // Check if channel is registered; auto-register using BASE_PROJECT_DIR
+  let project = getProject(message.channelId);
+  if (!project) {
+    const channel = message.channel as TextChannel;
+    const projectPath = path.join(getConfig().BASE_PROJECT_DIR, channel.name);
+    fs.mkdirSync(projectPath, { recursive: true });
+    registerProject(message.channelId, projectPath, message.guild.id);
+    project = getProject(message.channelId)!;
   }
 
   // Rate limit
@@ -126,8 +138,8 @@ export async function handleMessage(message: Message): Promise<void> {
 
   const channel = message.channel as TextChannel;
 
-  // If session is active, offer to queue the message
-  if (sessionManager.isActive(message.channelId)) {
+  // If session is busy (processing a message), offer to queue
+  if (sessionManager.isBusy(message.channelId)) {
     if (sessionManager.hasQueue(message.channelId)) {
       await message.reply(L("⏳ A message is already waiting to be queued. Please press the button first.", "⏳ 이미 큐 추가 대기 중인 메시지가 있습니다. 버튼을 먼저 눌러주세요."));
       return;

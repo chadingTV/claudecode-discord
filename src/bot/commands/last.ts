@@ -20,7 +20,7 @@ export async function execute(
 
   if (!project) {
     await interaction.editReply({
-      content: L("This channel is not registered to any project. Use `/register` first.", "이 채널은 프로젝트에 등록되지 않았습니다. `/register`를 먼저 사용하세요."),
+      content: L("This channel has no project. Send a message first to auto-register.", "이 채널에는 프로젝트가 없습니다. 먼저 메시지를 보내 자동 등록하세요."),
     });
     return;
   }

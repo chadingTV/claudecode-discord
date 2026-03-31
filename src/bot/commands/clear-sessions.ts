@@ -2,10 +2,11 @@ import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   PermissionFlagsBits,
+  TextChannel,
 } from "discord.js";
 import fs from "node:fs";
 import path from "node:path";
-import { getProject } from "../../db/database.js";
+import { getProject, clearSession } from "../../db/database.js";
 import { findSessionDir } from "./sessions.js";
 import { L } from "../../utils/i18n.js";
 
@@ -22,44 +23,56 @@ export async function execute(
 
   if (!project) {
     await interaction.editReply({
-      content: L("This channel is not registered to any project. Use `/register` first.", "이 채널은 어떤 프로젝트에도 등록되어 있지 않습니다. 먼저 `/register`를 사용하세요."),
+      content: L("This channel has no project. Send a message first to auto-register.", "이 채널에는 프로젝트가 없습니다. 먼저 메시지를 보내 자동 등록하세요."),
     });
     return;
   }
 
-  const sessionDir = findSessionDir(project.project_path);
-  if (!sessionDir) {
-    await interaction.editReply({
-      content: L(`No session directory found for \`${project.project_path}\``, `\`${project.project_path}\`에 대한 세션 디렉토리를 찾을 수 없습니다`),
-    });
-    return;
-  }
-
-  const files = fs.readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
-  if (files.length === 0) {
-    await interaction.editReply({
-      content: L("No session files to delete.", "삭제할 세션 파일이 없습니다."),
-    });
-    return;
-  }
-
+  // Delete session JSONL files if directory exists
   let deleted = 0;
-  for (const file of files) {
-    try {
-      fs.unlinkSync(path.join(sessionDir, file));
-      deleted++;
-    } catch {
-      // skip files that can't be deleted
+  const sessionDir = findSessionDir(project.project_path);
+  if (sessionDir) {
+    const files = fs.readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+    for (const file of files) {
+      try {
+        fs.unlinkSync(path.join(sessionDir, file));
+        deleted++;
+      } catch {
+        // skip files that can't be deleted
+      }
     }
   }
 
-  await interaction.editReply({
+  // Clear the session record from DB so the bot doesn't try to resume a deleted session
+  clearSession(channelId);
+
+  // Clear channel messages (bulk delete only works for messages <14 days old)
+  let messagesDeleted = 0;
+  try {
+    const channel = interaction.channel as TextChannel;
+    let fetched;
+    do {
+      fetched = await channel.messages.fetch({ limit: 100 });
+      if (fetched.size === 0) break;
+      const deletable = fetched.filter(
+        (m) => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000,
+      );
+      if (deletable.size === 0) break;
+      await channel.bulkDelete(deletable, true);
+      messagesDeleted += deletable.size;
+    } while (fetched.size === 100);
+  } catch (e) {
+    console.warn(`[clear-sessions] Failed to clear messages for ${channelId}:`, e instanceof Error ? e.message : e);
+  }
+
+  await interaction.followUp({
     embeds: [
       {
         title: L("Sessions Cleared", "세션 정리됨"),
         description: [
           `Project: \`${project.project_path}\``,
           L(`Deleted **${deleted}** session file(s)`, `**${deleted}**개의 세션 파일이 삭제되었습니다`),
+          L(`Cleared **${messagesDeleted}** message(s)`, `**${messagesDeleted}**개의 메시지를 삭제했습니다`),
         ].join("\n"),
         color: 0xff6b6b,
       },
