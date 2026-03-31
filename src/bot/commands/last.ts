@@ -20,7 +20,7 @@ export async function execute(
 
   if (!project) {
     await interaction.editReply({
-      content: L("This channel is not registered to any project. Use `/register` first.", "이 채널은 프로젝트에 등록되지 않았습니다. `/register`를 먼저 사용하세요."),
+      content: L("This channel is not registered. Set a workspace with `/workspace` and send a message first.", "이 채널은 등록되지 않았습니다. `/workspace`로 워크스페이스를 설정한 후 메시지를 보내세요."),
     });
     return;
   }

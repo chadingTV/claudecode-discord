@@ -25,7 +25,7 @@ export async function execute(
 
   if (projects.length === 0) {
     await interaction.editReply({
-      content: L("No projects registered. Use `/register` in a channel first.", "등록된 프로젝트가 없습니다. 먼저 채널에서 `/register`를 사용하세요."),
+      content: L("No projects registered. Set a workspace with `/workspace` and send a message in any channel.", "등록된 프로젝트가 없습니다. `/workspace`로 워크스페이스를 설정한 후 아무 채널에서 메시지를 보내세요."),
     });
     return;
   }

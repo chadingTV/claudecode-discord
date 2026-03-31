@@ -8,6 +8,12 @@ export interface Project {
   created_at: string;
 }
 
+export interface Workspace {
+  guild_id: string;
+  workspace_path: string;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   channel_id: string;
