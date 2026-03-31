@@ -31,8 +31,9 @@ import * as configCmd from "./commands/config.js";
 import * as skillsCmd from "./commands/skills.js";
 import * as modelsCmd from "./commands/models.js";
 import * as agentsCmd from "./commands/agents.js";
+import * as forceCmd from "./commands/force.js";
 
-const commands = [startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd, configCmd, skillsCmd, modelsCmd, agentsCmd];
+const commands = [startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd, configCmd, skillsCmd, modelsCmd, agentsCmd, forceCmd];
 const commandMap = new Collection<
   string,
   { execute: (interaction: ChatInputCommandInteraction) => Promise<void> }

@@ -1,4 +1,4 @@
-import { query, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus, type SlashCommand, type ModelInfo, type AgentInfo, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus, type McpStdioServerConfig, type McpSSEServerConfig, type McpHttpServerConfig, type SlashCommand, type ModelInfo, type AgentInfo, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
@@ -24,6 +24,26 @@ import {
   splitMessage,
   type AskQuestionData,
 } from "./output-formatter.js";
+
+type McpServerConfig = McpStdioServerConfig | McpSSEServerConfig | McpHttpServerConfig;
+
+function loadMcpServers(): Record<string, McpServerConfig> | undefined {
+  const mcpJsonPath = path.resolve(process.cwd(), ".mcp.json");
+  try {
+    const raw = fs.readFileSync(mcpJsonPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    const servers = parsed.mcpServers ?? parsed;
+    if (typeof servers === "object" && servers !== null && !Array.isArray(servers)) {
+      console.log(`[mcp] Loaded ${Object.keys(servers).length} MCP server(s) from .mcp.json`);
+      return servers as Record<string, McpServerConfig>;
+    }
+  } catch {
+    // No .mcp.json or invalid — that's fine
+  }
+  return undefined;
+}
+
+const globalMcpServers = loadMcpServers();
 
 interface TurnState {
   responseBuffer: string;
@@ -117,6 +137,7 @@ const pendingQuestions = new Map<
 const pendingCustomInputs = new Map<string, { requestId: string }>();
 
 const EDIT_INTERVAL = 1500; // ms between edits (Discord rate limit friendly)
+const SDK_CALL_TIMEOUT = 15_000; // 15s timeout for SDK metadata calls
 
 class SessionManager {
   private sessions = new Map<string, ActiveSession>();
@@ -143,7 +164,7 @@ class SessionManager {
 
     const existing = this.sessions.get(channelId);
     if (existing) {
-      await existing.initPromise;
+      await this.waitForInit(existing);
       return existing;
     }
 
@@ -152,7 +173,21 @@ class SessionManager {
     const dbId = dbSession?.id ?? randomUUID();
     const resumeSessionId = dbSession?.session_id ?? undefined;
 
-    return this.createSession(channel, project.project_path, dbId, resumeSessionId);
+    const session = this.createSession(channel, project.project_path, dbId, resumeSessionId);
+    await this.waitForInit(session);
+    return session;
+  }
+
+  private static readonly INIT_TIMEOUT = 60_000; // 60s max wait for session init
+
+  private async waitForInit(session: ActiveSession): Promise<void> {
+    if (session.initialized) return;
+    await Promise.race([
+      session.initPromise,
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error("Session initialization timed out (60s). Try again.")), SessionManager.INIT_TIMEOUT),
+      ),
+    ]);
   }
 
   /**
@@ -178,6 +213,7 @@ class SessionManager {
         permissionMode: "default",
         ...(channelModel ? { model: channelModel } : {}),
         env: { ...process.env, ANTHROPIC_API_KEY: undefined, PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ""}` },
+        ...(globalMcpServers ? { mcpServers: globalMcpServers } : {}),
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
 
         canUseTool: async (
@@ -574,10 +610,17 @@ class SessionManager {
    */
   private cleanupSession(channelId: string): void {
     const session = this.sessions.get(channelId);
-    if (session?.currentTurn) {
-      clearInterval(session.currentTurn.heartbeatInterval);
-      session.currentTurn.resolve();
-      session.currentTurn = null;
+    if (session) {
+      // Resolve init promise so waitForInit doesn't hang forever
+      if (!session.initialized) {
+        session.initialized = true;
+        session.resolveInit();
+      }
+      if (session.currentTurn) {
+        clearInterval(session.currentTurn.heartbeatInterval);
+        session.currentTurn.resolve();
+        session.currentTurn = null;
+      }
     }
 
     this.sessions.delete(channelId);
@@ -721,54 +764,47 @@ class SessionManager {
     return session?.currentTurn !== null && session?.currentTurn !== undefined;
   }
 
-  async getContextUsage(channelId: string): Promise<SDKControlGetContextUsageResponse | null> {
+  /**
+   * Call an SDK method with a timeout. If it hangs (zombie session), clean up and return null.
+   */
+  private async sdkCall<T>(channelId: string, fn: (q: Query) => Promise<T>): Promise<T | null> {
     const session = this.sessions.get(channelId);
     if (!session) return null;
     try {
-      return await session.queryInstance.getContextUsage();
-    } catch {
+      return await Promise.race([
+        fn(session.queryInstance),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("SDK call timed out")), SDK_CALL_TIMEOUT),
+        ),
+      ]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "SDK call timed out") {
+        console.warn(`[session] SDK call timed out for ${channelId}, cleaning up zombie session`);
+        this.stopSession(channelId);
+      }
       return null;
     }
+  }
+
+  async getContextUsage(channelId: string): Promise<SDKControlGetContextUsageResponse | null> {
+    return this.sdkCall(channelId, (q) => q.getContextUsage());
   }
 
   async getMcpStatus(channelId: string): Promise<McpServerStatus[] | null> {
-    const session = this.sessions.get(channelId);
-    if (!session) return null;
-    try {
-      return await session.queryInstance.mcpServerStatus();
-    } catch {
-      return null;
-    }
+    return this.sdkCall(channelId, (q) => q.mcpServerStatus());
   }
 
   async getSupportedCommands(channelId: string): Promise<SlashCommand[] | null> {
-    const session = this.sessions.get(channelId);
-    if (!session) return null;
-    try {
-      return await session.queryInstance.supportedCommands();
-    } catch {
-      return null;
-    }
+    return this.sdkCall(channelId, (q) => q.supportedCommands());
   }
 
   async getSupportedModels(channelId: string): Promise<ModelInfo[] | null> {
-    const session = this.sessions.get(channelId);
-    if (!session) return null;
-    try {
-      return await session.queryInstance.supportedModels();
-    } catch {
-      return null;
-    }
+    return this.sdkCall(channelId, (q) => q.supportedModels());
   }
 
   async getSupportedAgents(channelId: string): Promise<AgentInfo[] | null> {
-    const session = this.sessions.get(channelId);
-    if (!session) return null;
-    try {
-      return await session.queryInstance.supportedAgents();
-    } catch {
-      return null;
-    }
+    return this.sdkCall(channelId, (q) => q.supportedAgents());
   }
 
   resolveApproval(
