@@ -7,6 +7,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { getProject, clearSession } from "../../db/database.js";
+import { sessionManager } from "../../claude/session-manager.js";
 import { findSessionDir } from "./sessions.js";
 import { L } from "../../utils/i18n.js";
 
@@ -28,6 +29,11 @@ export async function execute(
     return;
   }
 
+  // Stop active session first to avoid race conditions
+  if (sessionManager.isActive(channelId)) {
+    await sessionManager.stopSession(channelId);
+  }
+
   // Delete session JSONL files if directory exists
   let deleted = 0;
   const sessionDir = findSessionDir(project.project_path);
@@ -47,6 +53,9 @@ export async function execute(
   clearSession(channelId);
 
   // Clear channel messages (bulk delete only works for messages <14 days old)
+  // Get the deferred reply message ID so we don't delete it
+  const replyMessage = await interaction.fetchReply();
+  const replyId = replyMessage.id;
   let messagesDeleted = 0;
   try {
     const channel = interaction.channel as TextChannel;
@@ -55,7 +64,9 @@ export async function execute(
       fetched = await channel.messages.fetch({ limit: 100 });
       if (fetched.size === 0) break;
       const deletable = fetched.filter(
-        (m) => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000,
+        (m) =>
+          m.id !== replyId &&
+          Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000,
       );
       if (deletable.size === 0) break;
       await channel.bulkDelete(deletable, true);
@@ -65,7 +76,7 @@ export async function execute(
     console.warn(`[clear-sessions] Failed to clear messages for ${channelId}:`, e instanceof Error ? e.message : e);
   }
 
-  await interaction.followUp({
+  await interaction.editReply({
     embeds: [
       {
         title: L("Sessions Cleared", "세션 정리됨"),

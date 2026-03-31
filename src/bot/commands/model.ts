@@ -3,6 +3,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { getProject, getModel, setModel } from "../../db/database.js";
+import { sessionManager } from "../../claude/session-manager.js";
 import { L } from "../../utils/i18n.js";
 
 const MODELS = [
@@ -57,6 +58,11 @@ export async function execute(
 
   const model = modelArg === "default" ? null : modelArg;
   setModel(channelId, model);
+
+  // Restart active session so the new model takes effect immediately
+  if (sessionManager.isActive(channelId)) {
+    await sessionManager.stopSession(channelId);
+  }
 
   await interaction.editReply({
     embeds: [
