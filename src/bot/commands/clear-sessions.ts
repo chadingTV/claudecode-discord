@@ -2,6 +2,7 @@ import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   PermissionFlagsBits,
+  TextChannel,
 } from "discord.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -56,13 +57,33 @@ export async function execute(
   // Also clear the session record from DB so the bot doesn't try to resume a deleted session
   clearSession(channelId);
 
-  await interaction.editReply({
+  // Clear channel messages (bulk delete only works for messages <14 days old)
+  let messagesDeleted = 0;
+  try {
+    const channel = interaction.channel as TextChannel;
+    let fetched;
+    do {
+      fetched = await channel.messages.fetch({ limit: 100 });
+      if (fetched.size === 0) break;
+      const deletable = fetched.filter(
+        (m) => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000,
+      );
+      if (deletable.size === 0) break;
+      await channel.bulkDelete(deletable, true);
+      messagesDeleted += deletable.size;
+    } while (fetched.size === 100);
+  } catch (e) {
+    console.warn(`[clear-sessions] Failed to clear messages for ${channelId}:`, e instanceof Error ? e.message : e);
+  }
+
+  await interaction.followUp({
     embeds: [
       {
         title: L("Sessions Cleared", "세션 정리됨"),
         description: [
           `Project: \`${project.project_path}\``,
           L(`Deleted **${deleted}** session file(s)`, `**${deleted}**개의 세션 파일이 삭제되었습니다`),
+          L(`Cleared **${messagesDeleted}** message(s)`, `**${messagesDeleted}**개의 메시지를 삭제했습니다`),
         ].join("\n"),
         color: 0xff6b6b,
       },
