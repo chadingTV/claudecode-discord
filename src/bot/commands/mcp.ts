@@ -25,6 +25,9 @@ export async function execute(
   const channel = interaction.channel as TextChannel;
 
   try {
+    if (!sessionManager.isActive(channel.id)) {
+      await interaction.editReply({ content: L("🔄 Starting session...", "🔄 세션 시작 중...") });
+    }
     await sessionManager.ensureSession(channel);
   } catch (error) {
     await interaction.editReply({
