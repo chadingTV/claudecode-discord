@@ -1,4 +1,5 @@
 import "dotenv/config";
+import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig } from "./utils/config.js";
@@ -56,6 +57,24 @@ async function main() {
   });
 
   console.log("Starting Claude Code Discord Controller...");
+
+  // Sync built-in skills to ~/.claude/commands/
+  const skillsSource = path.resolve(process.cwd(), "skills");
+  if (fs.existsSync(skillsSource)) {
+    const targetDir = path.join(os.homedir(), ".claude", "commands");
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const file of fs.readdirSync(skillsSource)) {
+      if (!file.endsWith(".md")) continue;
+      const src = path.join(skillsSource, file);
+      const dst = path.join(targetDir, file);
+      const content = fs.readFileSync(src, "utf-8");
+      try {
+        if (fs.existsSync(dst) && fs.readFileSync(dst, "utf-8") === content) continue;
+      } catch { /* overwrite */ }
+      fs.writeFileSync(dst, content, "utf-8");
+    }
+    console.log("Skills synced to ~/.claude/commands/");
+  }
 
   // Load and validate config
   loadConfig();
