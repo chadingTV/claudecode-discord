@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import fs from "node:fs";
 import path from "node:path";
-import { getProject } from "../../db/database.js";
+import { getProject, clearSession } from "../../db/database.js";
 import { findSessionDir } from "./sessions.js";
 import { L } from "../../utils/i18n.js";
 
@@ -52,6 +52,9 @@ export async function execute(
       // skip files that can't be deleted
     }
   }
+
+  // Also clear the session record from DB so the bot doesn't try to resume a deleted session
+  clearSession(channelId);
 
   await interaction.editReply({
     embeds: [

@@ -97,6 +97,10 @@ export function getSession(channelId: string): Session | undefined {
     .get(channelId) as Session | undefined;
 }
 
+export function clearSession(channelId: string): void {
+  db.prepare("DELETE FROM sessions WHERE channel_id = ?").run(channelId);
+}
+
 export function updateSessionStatus(
   channelId: string,
   status: SessionStatus,
