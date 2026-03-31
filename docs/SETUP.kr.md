@@ -122,7 +122,7 @@ npm run build   # 타입 에러 없이 빌드되는지 확인
      <img src="discord-scopes.png" alt="Discord OAuth2 Scopes" width="500">
    </p>
 
-   - **BOT PERMISSIONS**: `Send Messages`, `Embed Links`, `Read Message History`, `Use Slash Commands` 체크
+   - **BOT PERMISSIONS**: `Send Messages`, `Embed Links`, `Attach Files`, `Read Message History`, `Use Slash Commands` 체크
 
    <p align="center">
      <img src="discord-bot-permissions.png" alt="Discord Bot Permissions" width="500">

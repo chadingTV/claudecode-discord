@@ -28,6 +28,12 @@ export function initDatabase(): void {
       last_activity TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS workspaces (
+      guild_id TEXT PRIMARY KEY,
+      workspace_path TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 }
 
@@ -97,6 +103,10 @@ export function getSession(channelId: string): Session | undefined {
     .get(channelId) as Session | undefined;
 }
 
+export function clearSession(channelId: string): void {
+  db.prepare("DELETE FROM sessions WHERE channel_id = ?").run(channelId);
+}
+
 export function updateSessionStatus(
   channelId: string,
   status: SessionStatus,
@@ -114,4 +124,32 @@ export function getAllSessions(guildId: string): (Session & { project_path: stri
       WHERE p.guild_id = ?
     `)
     .all(guildId) as (Session & { project_path: string })[];
+}
+
+// Model per channel
+export function setModel(channelId: string, model: string | null): void {
+  try { db.exec("ALTER TABLE projects ADD COLUMN model TEXT DEFAULT NULL"); } catch {}
+  db.prepare("UPDATE projects SET model = ? WHERE channel_id = ?").run(model, channelId);
+}
+
+export function getModel(channelId: string): string | null {
+  try { db.exec("ALTER TABLE projects ADD COLUMN model TEXT DEFAULT NULL"); } catch {}
+  const row = db.prepare("SELECT model FROM projects WHERE channel_id = ?").get(channelId) as { model: string | null } | undefined;
+  return row?.model ?? null;
+}
+
+// Disabled MCPs per channel
+export function getDisabledMcps(channelId: string): string[] {
+  try { db.exec("ALTER TABLE projects ADD COLUMN disabled_mcps TEXT DEFAULT NULL"); } catch {}
+  const row = db.prepare("SELECT disabled_mcps FROM projects WHERE channel_id = ?").get(channelId) as { disabled_mcps: string | null } | undefined;
+  if (!row?.disabled_mcps) return [];
+  try { return JSON.parse(row.disabled_mcps) as string[]; } catch { return []; }
+}
+
+export function setDisabledMcps(channelId: string, names: string[]): void {
+  try { db.exec("ALTER TABLE projects ADD COLUMN disabled_mcps TEXT DEFAULT NULL"); } catch {}
+  db.prepare("UPDATE projects SET disabled_mcps = ? WHERE channel_id = ?").run(
+    names.length > 0 ? JSON.stringify(names) : null,
+    channelId,
+  );
 }

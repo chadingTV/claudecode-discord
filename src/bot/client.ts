@@ -11,11 +11,12 @@ import { getConfig } from "../utils/config.js";
 import { handleMessage } from "./handlers/message.js";
 import { handleButtonInteraction, handleSelectMenuInteraction } from "./handlers/interaction.js";
 import { isAllowedUser } from "../security/guard.js";
+import { getAllProjects, unregisterProject } from "../db/database.js";
+import { cleanupProjectFiles } from "../utils/cleanup.js";
 import { L } from "../utils/i18n.js";
 
 // Import commands
-import * as registerCmd from "./commands/register.js";
-import * as unregisterCmd from "./commands/unregister.js";
+import * as startNewCmd from "./commands/start-new.js";
 import * as statusCmd from "./commands/status.js";
 import * as stopCmd from "./commands/stop.js";
 import * as autoApproveCmd from "./commands/auto-approve.js";
@@ -24,8 +25,16 @@ import * as clearSessionsCmd from "./commands/clear-sessions.js";
 import * as lastCmd from "./commands/last.js";
 import * as queueCmd from "./commands/queue.js";
 import * as usageCmd from "./commands/usage.js";
+import * as modelCmd from "./commands/model.js";
+import * as contextCmd from "./commands/context.js";
+import * as mcpCmd from "./commands/mcp.js";
+import * as configCmd from "./commands/config.js";
+import * as skillsCmd from "./commands/skills.js";
+import * as modelsCmd from "./commands/models.js";
+import * as agentsCmd from "./commands/agents.js";
+import * as forceCmd from "./commands/force.js";
 
-const commands = [registerCmd, unregisterCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd];
+const commands = [startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd, configCmd, skillsCmd, modelsCmd, agentsCmd, forceCmd];
 const commandMap = new Collection<
   string,
   { execute: (interaction: ChatInputCommandInteraction) => Promise<void> }
@@ -63,6 +72,10 @@ export async function startBot(): Promise<Client> {
     } catch (error) {
       console.error("Failed to register slash commands:", error);
     }
+
+    // Clean up orphaned projects for deleted channels
+    cleanupOrphanedProjects(client, config.DISCORD_GUILD_ID);
+    setInterval(() => cleanupOrphanedProjects(client, config.DISCORD_GUILD_ID), 60 * 60 * 1000);
   });
 
   // Handle interactions (slash commands + buttons)
@@ -159,6 +172,24 @@ export async function startBot(): Promise<Client> {
   // Login with retry (network may not be ready on boot)
   await loginWithRetry(client, config.DISCORD_BOT_TOKEN);
   return client;
+}
+
+function cleanupOrphanedProjects(client: Client, guildId: string): void {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return;
+
+  const projects = getAllProjects(guildId);
+  let cleaned = 0;
+  for (const project of projects) {
+    if (!guild.channels.cache.has(project.channel_id)) {
+      cleanupProjectFiles(project.project_path);
+      unregisterProject(project.channel_id);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    console.log(`[cleanup] Removed ${cleaned} orphaned project(s) for deleted channels`);
+  }
 }
 
 async function loginWithRetry(client: Client, token: string): Promise<void> {
