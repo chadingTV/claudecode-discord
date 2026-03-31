@@ -12,6 +12,8 @@ import {
   setAutoApprove,
   clearSession,
   registerProject,
+  getDisabledMcps,
+  setDisabledMcps,
 } from "../db/database.js";
 import { getConfig } from "../utils/config.js";
 import { L } from "../utils/i18n.js";
@@ -440,6 +442,12 @@ class SessionManager {
         }
         session.initialized = true;
         session.resolveInit();
+
+        // Apply per-channel disabled MCPs
+        const disabledMcps = getDisabledMcps(channelId);
+        for (const name of disabledMcps) {
+          try { await queryInstance.toggleMcpServer(name, false); } catch { /* server may not exist */ }
+        }
       }
 
       const turn = session.currentTurn;
@@ -804,6 +812,20 @@ class SessionManager {
 
   async getMcpStatus(channelId: string): Promise<McpServerStatus[] | null> {
     return this.sdkCall(channelId, (q) => q.mcpServerStatus());
+  }
+
+  async toggleMcpServer(channelId: string, serverName: string, enabled: boolean): Promise<void> {
+    await this.sdkCall(channelId, (q) => q.toggleMcpServer(serverName, enabled));
+    // Persist to DB
+    const disabled = getDisabledMcps(channelId);
+    if (enabled) {
+      const updated = disabled.filter((n) => n !== serverName);
+      setDisabledMcps(channelId, updated);
+    } else {
+      if (!disabled.includes(serverName)) {
+        setDisabledMcps(channelId, [...disabled, serverName]);
+      }
+    }
   }
 
   async getSupportedCommands(channelId: string): Promise<SlashCommand[] | null> {
