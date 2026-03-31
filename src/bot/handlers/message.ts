@@ -64,23 +64,26 @@ export async function handleMessage(message: Message): Promise<void> {
   // Ignore bots and DMs
   if (message.author.bot || !message.guild) return;
 
+  // Auth check (before auto-register to prevent unauthorized registration)
+  if (!isAllowedUser(message.author.id)) return;
+
   // Check if channel is registered; auto-register if workspace is set
   let project = getProject(message.channelId);
   if (!project) {
     const workspace = getWorkspace(message.guild.id);
-    if (!workspace) return;
+    if (!workspace) {
+      await message.reply(L(
+        "No workspace set. An admin must run `/workspace path:<directory>` first.",
+        "워크스페이스가 설정되지 않았습니다. 관리자가 먼저 `/workspace path:<디렉토리>`를 실행해야 합니다.",
+      ));
+      return;
+    }
 
     const channel = message.channel as TextChannel;
     const projectPath = path.join(workspace.workspace_path, channel.name);
     fs.mkdirSync(projectPath, { recursive: true });
     registerProject(message.channelId, projectPath, message.guild.id);
     project = getProject(message.channelId)!;
-  }
-
-  // Auth check
-  if (!isAllowedUser(message.author.id)) {
-    await message.reply(L("You are not authorized to use this bot.", "이 봇을 사용할 권한이 없습니다."));
-    return;
   }
 
   // Rate limit
