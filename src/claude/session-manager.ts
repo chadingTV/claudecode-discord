@@ -204,9 +204,9 @@ class SessionManager {
     const dbId = dbSession?.id ?? randomUUID();
     const resumeSessionId = dbSession?.session_id ?? undefined;
 
-    // Don't await init here — the SDK may need the first message push before emitting init.
-    // Callers that need the session ready (sdkCall) wait for init themselves.
-    return this.createSession(channel, project.project_path, dbId, resumeSessionId);
+    const newSession = this.createSession(channel, project.project_path, dbId, resumeSessionId);
+    await this.waitForInit(newSession);
+    return newSession;
   }
 
   private static readonly INIT_TIMEOUT = 60_000; // 60s max wait for session init
@@ -424,6 +424,18 @@ class SessionManager {
 
     this.sessions.set(channelId, session);
     upsertSession(dbId, channelId, resumeSessionId ?? null, "idle");
+
+    // Push a bootstrap message so the SDK initializes immediately.
+    // Without this, slash commands that call ensureSession() + sdkCall()
+    // would hang waiting for init, since no user message is ever pushed.
+    // The response is silently discarded (no currentTurn set).
+    if (!resumeSessionId) {
+      messageChannel.push({
+        type: "user",
+        message: { role: "user", content: "." },
+        parent_tool_use_id: null,
+      });
+    }
 
     // Start background message loop
     this.runSessionLoop(session).then(() => {
