@@ -91,7 +91,7 @@ export function createToolApprovalEmbed(
   requestId: string,
 ): { embed: EmbedBuilder; row: ActionRowBuilder<ButtonBuilder> } {
   const embed = new EmbedBuilder()
-    .setTitle(L(`🔧 Tool Use: ${toolName}`, `🔧 도구 사용: ${toolName}`))
+    .setTitle(L(`🔧 Tool Use: ${toolName.replace(/_/g, "\\_")}`, `🔧 도구 사용: ${toolName.replace(/_/g, "\\_")}`))
     .setColor(0xffa500)
     .setTimestamp();
 

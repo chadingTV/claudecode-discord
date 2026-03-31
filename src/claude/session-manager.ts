@@ -1,8 +1,9 @@
-import { query, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus, type McpStdioServerConfig, type McpSSEServerConfig, type McpHttpServerConfig, type SlashCommand, type ModelInfo, type AgentInfo, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, createSdkMcpServer, tool, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus, type McpStdioServerConfig, type McpSSEServerConfig, type McpHttpServerConfig, type McpServerConfig, type McpSdkServerConfigWithInstance, type SlashCommand, type ModelInfo, type AgentInfo, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import type { TextChannel } from "discord.js";
+import { AttachmentBuilder, type TextChannel } from "discord.js";
+import { z } from "zod";
 import {
   getModel,
   upsertSession,
@@ -26,9 +27,9 @@ import {
   splitMessage,
   type AskQuestionData,
 } from "./output-formatter.js";
-type McpServerConfig = McpStdioServerConfig | McpSSEServerConfig | McpHttpServerConfig;
+type ExternalMcpServerConfig = McpStdioServerConfig | McpSSEServerConfig | McpHttpServerConfig;
 
-function loadMcpServers(): Record<string, McpServerConfig> | undefined {
+function loadMcpServers(): Record<string, ExternalMcpServerConfig> | undefined {
   const mcpJsonPath = path.resolve(process.cwd(), ".mcp.json");
   try {
     const raw = fs.readFileSync(mcpJsonPath, "utf-8");
@@ -36,7 +37,7 @@ function loadMcpServers(): Record<string, McpServerConfig> | undefined {
     const servers = parsed.mcpServers ?? parsed;
     if (typeof servers === "object" && servers !== null && !Array.isArray(servers)) {
       console.log(`[mcp] Loaded ${Object.keys(servers).length} MCP server(s) from .mcp.json`);
-      return servers as Record<string, McpServerConfig>;
+      return servers as Record<string, ExternalMcpServerConfig>;
     }
   } catch {
     // No .mcp.json or invalid — that's fine
@@ -45,6 +46,19 @@ function loadMcpServers(): Record<string, McpServerConfig> | undefined {
 }
 
 const globalMcpServers = loadMcpServers();
+
+// In-process MCP server for sending files to the user
+const userMcpServer: McpSdkServerConfigWithInstance = createSdkMcpServer({
+  name: "user",
+  tools: [
+    tool(
+      "send_file",
+      "Send a file to the user. Use this when you want to share a file (image, document, code, generated output, etc.) directly with the user. The file_path must be an absolute path to an existing file.",
+      { file_path: z.string().describe("Absolute path to the file to send") },
+      async () => ({ content: [{ type: "text" as const, text: "File sent to user." }] }),
+    ),
+  ],
+});
 
 interface TurnState {
   responseBuffer: string;
@@ -151,7 +165,7 @@ class SessionManager {
    * Auto-registers the channel if not registered.
    * Returns the ActiveSession once initialized.
    */
-  async ensureSession(channel: TextChannel): Promise<ActiveSession> {
+  async ensureSession(channel: TextChannel, options?: { bootstrap?: boolean }): Promise<ActiveSession> {
     const channelId = channel.id;
 
     // Auto-register channel if not registered
@@ -174,8 +188,11 @@ class SessionManager {
     const dbId = dbSession?.id ?? randomUUID();
     const resumeSessionId = dbSession?.session_id ?? undefined;
 
-    const newSession = this.createSession(channel, project.project_path, dbId, resumeSessionId);
-    await this.waitForInit(newSession);
+    const bootstrap = options?.bootstrap ?? true;
+    const newSession = this.createSession(channel, project.project_path, dbId, resumeSessionId, bootstrap);
+    if (bootstrap) {
+      await this.waitForInit(newSession);
+    }
     return newSession;
   }
 
@@ -199,6 +216,7 @@ class SessionManager {
     projectPath: string,
     dbId: string,
     resumeSessionId?: string,
+    bootstrap = true,
   ): ActiveSession {
     const channelId = channel.id;
     const channelModel = getModel(channelId);
@@ -214,7 +232,7 @@ class SessionManager {
         permissionMode: "default",
         ...(channelModel ? { model: channelModel } : {}),
         env: { ...process.env, ANTHROPIC_API_KEY: undefined, PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ""}` },
-        ...(globalMcpServers ? { mcpServers: globalMcpServers } : {}),
+        mcpServers: { ...globalMcpServers, user: userMcpServer } as Record<string, McpServerConfig>,
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
 
         canUseTool: async (
@@ -237,11 +255,13 @@ class SessionManager {
               WebSearch: L("Searching web", "웹 검색 중"),
               WebFetch: L("Fetching URL", "URL 가져오는 중"),
               TodoWrite: L("Updating tasks", "작업 업데이트 중"),
+              mcp__user__send_file: L("Sending file", "파일 전송 중"),
             };
             const filePath = typeof input.file_path === "string"
               ? ` \`${(input.file_path as string).split(/[\\/]/).pop()}\``
               : "";
-            turn.lastActivity = `${toolLabels[toolName] ?? `Using ${toolName}`}${filePath}`;
+            const escapedToolName = toolName.replace(/_/g, "\\_");
+            turn.lastActivity = `${toolLabels[toolName] ?? `Using ${escapedToolName}`}${filePath}`;
 
             // Update status message if no text output yet
             if (!turn.hasTextOutput) {
@@ -322,6 +342,28 @@ class SessionManager {
             };
           }
 
+          // Handle Discord file send MCP tool
+          if (toolName === "mcp__user__send_file") {
+            const filePath = input.file_path as string;
+            try {
+              const resolvedPath = path.resolve(filePath);
+              if (!fs.existsSync(resolvedPath)) {
+                return { behavior: "deny" as const, message: `File not found: ${filePath}` };
+              }
+              const stat = fs.statSync(resolvedPath);
+              if (stat.size > 25 * 1024 * 1024) {
+                return { behavior: "deny" as const, message: "File exceeds Discord's 25MB limit" };
+              }
+              const fileName = path.basename(resolvedPath);
+              const attachment = new AttachmentBuilder(resolvedPath, { name: fileName });
+              await channel.send({ files: [attachment] });
+            } catch (e) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              return { behavior: "deny" as const, message: `Failed to send file: ${errMsg}` };
+            }
+            return { behavior: "allow" as const, updatedInput: input };
+          }
+
           // Auto-approve read-only tools
           const readOnlyTools = ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"];
           if (readOnlyTools.includes(toolName)) {
@@ -391,10 +433,10 @@ class SessionManager {
     upsertSession(dbId, channelId, resumeSessionId ?? null, "idle");
 
     // Push a bootstrap message so the SDK initializes immediately.
-    // Without this, slash commands that call ensureSession() + sdkCall()
-    // would hang waiting for init, since no user message is ever pushed.
-    // The response is silently discarded (no currentTurn set).
-    if (!resumeSessionId) {
+    // Only needed for slash commands that call ensureSession() + sdkCall()
+    // without a subsequent user message. When called from sendMessage(),
+    // the user's actual message will initialize the session instead.
+    if (bootstrap && !resumeSessionId) {
       messageChannel.push({
         type: "user",
         message: { role: "user", content: "Hi" },
@@ -685,7 +727,7 @@ class SessionManager {
     // Ensure session exists (auto-register + create if needed)
     let session: ActiveSession;
     try {
-      session = await this.ensureSession(channel);
+      session = await this.ensureSession(channel, { bootstrap: false });
     } catch (error) {
       const rawMsg = error instanceof Error ? error.message : "Unknown error";
 
