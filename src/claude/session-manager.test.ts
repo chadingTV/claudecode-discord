@@ -13,10 +13,6 @@ vi.mock("../db/database.js", () => ({
   setAutoApprove: vi.fn(),
 }));
 
-vi.mock("../utils/config.js", () => ({
-  getConfig: vi.fn(() => ({ SHOW_COST: true })),
-}));
-
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
 }));

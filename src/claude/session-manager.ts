@@ -1,4 +1,4 @@
-import { query, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus, type SlashCommand, type ModelInfo, type AgentInfo } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { TextChannel } from "discord.js";
@@ -11,7 +11,6 @@ import {
   setAutoApprove,
   clearSession,
 } from "../db/database.js";
-import { getConfig } from "../utils/config.js";
 import { L } from "../utils/i18n.js";
 import {
   createToolApprovalEmbed,
@@ -333,6 +332,10 @@ class SessionManager {
             result?: string;
             total_cost_usd?: number;
             duration_ms?: number;
+            usage?: {
+              input_tokens: number;
+              output_tokens: number;
+            };
           };
 
           // Flush remaining buffer
@@ -359,13 +362,16 @@ class SessionManager {
 
           // Send result embed
           const resultText = resultMsg.result ?? L("Task completed", "작업 완료");
-          const resultEmbed = createResultEmbed(
+          const { embed: resultEmbed, file: resultFile } = createResultEmbed(
             resultText,
-            resultMsg.total_cost_usd ?? 0,
+            resultMsg.usage?.input_tokens ?? 0,
+            resultMsg.usage?.output_tokens ?? 0,
             resultMsg.duration_ms ?? 0,
-            getConfig().SHOW_COST,
           );
-          await channel.send({ embeds: [resultEmbed] });
+          await channel.send({
+            embeds: [resultEmbed],
+            ...(resultFile && { files: [resultFile] }),
+          });
 
           // Detect auth/credit errors in result and suggest re-login
           const resultAuthKeywords = ["credit balance", "not authenticated", "unauthorized", "authentication", "login required", "auth token", "expired", "not logged in", "please run /login"];
@@ -511,6 +517,36 @@ class SessionManager {
     if (!session) return null;
     try {
       return await session.queryInstance.mcpServerStatus();
+    } catch {
+      return null;
+    }
+  }
+
+  async getSupportedCommands(channelId: string): Promise<SlashCommand[] | null> {
+    const session = this.sessions.get(channelId);
+    if (!session) return null;
+    try {
+      return await session.queryInstance.supportedCommands();
+    } catch {
+      return null;
+    }
+  }
+
+  async getSupportedModels(channelId: string): Promise<ModelInfo[] | null> {
+    const session = this.sessions.get(channelId);
+    if (!session) return null;
+    try {
+      return await session.queryInstance.supportedModels();
+    } catch {
+      return null;
+    }
+  }
+
+  async getSupportedAgents(channelId: string): Promise<AgentInfo[] | null> {
+    const session = this.sessions.get(channelId);
+    if (!session) return null;
+    try {
+      return await session.queryInstance.supportedAgents();
     } catch {
       return null;
     }
