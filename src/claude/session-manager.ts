@@ -206,6 +206,10 @@ class SessionManager {
 
     const newSession = this.createSession(channel, project.project_path, dbId, resumeSessionId);
     await this.waitForInit(newSession);
+    // Interrupt the bootstrap "Hi" response to save tokens
+    if (!resumeSessionId) {
+      try { newSession.queryInstance.interrupt(); } catch { /* ignore */ }
+    }
     return newSession;
   }
 
