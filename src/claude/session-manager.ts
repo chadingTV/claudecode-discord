@@ -49,30 +49,6 @@ function loadMcpServers(): Record<string, McpServerConfig> | undefined {
 
 const globalMcpServers = loadMcpServers();
 
-/**
- * Sync built-in skills from the bot's skills/ directory to a project workspace.
- * Only writes if the file is missing or content has changed (avoids unnecessary writes).
- */
-function syncSkills(projectPath: string): void {
-  const skillsSource = path.resolve(process.cwd(), "skills");
-  if (!fs.existsSync(skillsSource)) return;
-
-  const targetDir = path.join(projectPath, ".claude", "commands");
-  fs.mkdirSync(targetDir, { recursive: true });
-
-  for (const file of fs.readdirSync(skillsSource)) {
-    if (!file.endsWith(".md")) continue;
-    const src = path.join(skillsSource, file);
-    const dst = path.join(targetDir, file);
-    const content = fs.readFileSync(src, "utf-8");
-    // Only write if missing or changed
-    try {
-      if (fs.existsSync(dst) && fs.readFileSync(dst, "utf-8") === content) continue;
-    } catch { /* read failed, overwrite */ }
-    fs.writeFileSync(dst, content, "utf-8");
-  }
-}
-
 interface TurnState {
   responseBuffer: string;
   lastEditTime: number;
@@ -190,9 +166,6 @@ class SessionManager {
       project = getProject(channelId)!;
     }
 
-    // Sync built-in skills to project workspace
-    syncSkills(project.project_path);
-
     const existing = this.sessions.get(channelId);
     if (existing) {
       await this.waitForInit(existing);
@@ -206,10 +179,6 @@ class SessionManager {
 
     const newSession = this.createSession(channel, project.project_path, dbId, resumeSessionId);
     await this.waitForInit(newSession);
-    // Interrupt the bootstrap "Hi" response to save tokens
-    if (!resumeSessionId) {
-      try { newSession.queryInstance.interrupt(); } catch { /* ignore */ }
-    }
     return newSession;
   }
 
