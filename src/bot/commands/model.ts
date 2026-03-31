@@ -6,9 +6,9 @@ import { getProject, getModel, setModel } from "../../db/database.js";
 import { L } from "../../utils/i18n.js";
 
 const MODELS = [
-  { name: "Opus 4.6", value: "claude-opus-4-6" },
-  { name: "Sonnet 4.6", value: "claude-sonnet-4-6" },
-  { name: "Haiku 4.5", value: "claude-haiku-4-5-20251001" },
+  { name: "Opus (latest)", value: "opus" },
+  { name: "Sonnet (latest)", value: "sonnet" },
+  { name: "Haiku (latest)", value: "haiku" },
   { name: "Default (use CLI default)", value: "default" },
 ];
 
