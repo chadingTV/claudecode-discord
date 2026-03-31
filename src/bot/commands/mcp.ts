@@ -2,8 +2,8 @@ import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   EmbedBuilder,
+  TextChannel,
 } from "discord.js";
-import { getProject } from "../../db/database.js";
 import { sessionManager } from "../../claude/session-manager.js";
 import { L } from "../../utils/i18n.js";
 
@@ -22,31 +22,22 @@ export const data = new SlashCommandBuilder()
 export async function execute(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  const channelId = interaction.channelId;
-  const project = getProject(channelId);
+  const channel = interaction.channel as TextChannel;
 
-  if (!project) {
+  try {
+    await sessionManager.ensureSession(channel);
+  } catch (error) {
     await interaction.editReply({
       content: L(
-        "This channel is not registered to any project.",
-        "이 채널은 어떤 프로젝트에도 등록되어 있지 않습니다.",
-      ),
-    });
-    return;
-  }
-
-  if (!sessionManager.isActive(channelId)) {
-    await interaction.editReply({
-      content: L(
-        "No active session in this channel. Send a message to start one.",
-        "이 채널에 활성 세션이 없습니다. 메시지를 보내 세션을 시작하세요.",
+        `Failed to start session: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `세션 시작 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`,
       ),
     });
     return;
   }
 
   try {
-    const servers = await sessionManager.getMcpStatus(channelId);
+    const servers = await sessionManager.getMcpStatus(channel.id);
     if (!servers) {
       await interaction.editReply({
         content: L(

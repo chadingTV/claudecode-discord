@@ -130,8 +130,8 @@ export async function handleMessage(message: Message): Promise<void> {
 
   const channel = message.channel as TextChannel;
 
-  // If session is active, offer to queue the message
-  if (sessionManager.isActive(message.channelId)) {
+  // If session is busy (processing a message), offer to queue
+  if (sessionManager.isBusy(message.channelId)) {
     if (sessionManager.hasQueue(message.channelId)) {
       await message.reply(L("⏳ A message is already waiting to be queued. Please press the button first.", "⏳ 이미 큐 추가 대기 중인 메시지가 있습니다. 버튼을 먼저 눌러주세요."));
       return;
