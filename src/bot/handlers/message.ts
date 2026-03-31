@@ -1,5 +1,5 @@
 import { Message, TextChannel, Attachment, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-import { getProject, getWorkspace, registerProject } from "../../db/database.js";
+import { getProject, registerProject } from "../../db/database.js";
 import { isAllowedUser, checkRateLimit } from "../../security/guard.js";
 import { sessionManager } from "../../claude/session-manager.js";
 import { getConfig } from "../../utils/config.js";
@@ -68,14 +68,11 @@ export async function handleMessage(message: Message): Promise<void> {
   // Auth check (before auto-register to prevent unauthorized registration)
   if (!isAllowedUser(message.author.id)) return;
 
-  // Check if channel is registered; auto-register using workspace or BASE_PROJECT_DIR
+  // Check if channel is registered; auto-register using BASE_PROJECT_DIR
   let project = getProject(message.channelId);
   if (!project) {
-    const workspace = getWorkspace(message.guild.id);
-    const baseDir = workspace?.workspace_path ?? getConfig().BASE_PROJECT_DIR;
-
     const channel = message.channel as TextChannel;
-    const projectPath = path.join(baseDir, channel.name);
+    const projectPath = path.join(getConfig().BASE_PROJECT_DIR, channel.name);
     fs.mkdirSync(projectPath, { recursive: true });
     registerProject(message.channelId, projectPath, message.guild.id);
     project = getProject(message.channelId)!;

@@ -7,9 +7,10 @@ import {
 } from "discord.js";
 import fs from "node:fs";
 import path from "node:path";
-import { registerProject, getWorkspace } from "../../db/database.js";
+import { registerProject } from "../../db/database.js";
 import { sessionManager } from "../../claude/session-manager.js";
 import { slugifyChannelName } from "../../utils/channel-name.js";
+import { getConfig } from "../../utils/config.js";
 import { L } from "../../utils/i18n.js";
 
 export const data = new SlashCommandBuilder()
@@ -37,21 +38,9 @@ export async function execute(
   const guildId = interaction.guildId!;
   const guild = interaction.guild!;
 
-  // Check workspace is set
-  const workspace = getWorkspace(guildId);
-  if (!workspace) {
-    await interaction.editReply({
-      content: L(
-        "No workspace set. Use `/workspace path:<directory>` first.",
-        "워크스페이스가 설정되지 않았습니다. 먼저 `/workspace path:<디렉토리>`를 사용하세요.",
-      ),
-    });
-    return;
-  }
-
-  // Derive channel name
+  // Derive channel name and project path
   const channelName = customChannelName ?? slugifyChannelName(firstMessage);
-  const projectPath = path.join(workspace.workspace_path, channelName);
+  const projectPath = path.join(getConfig().BASE_PROJECT_DIR, channelName);
 
   // Create project directory
   fs.mkdirSync(projectPath, { recursive: true });

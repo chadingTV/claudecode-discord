@@ -15,7 +15,6 @@ import { getAllProjects, unregisterProject } from "../db/database.js";
 import { L } from "../utils/i18n.js";
 
 // Import commands
-import * as workspaceCmd from "./commands/workspace.js";
 import * as startNewCmd from "./commands/start-new.js";
 import * as statusCmd from "./commands/status.js";
 import * as stopCmd from "./commands/stop.js";
@@ -29,7 +28,7 @@ import * as modelCmd from "./commands/model.js";
 import * as contextCmd from "./commands/context.js";
 import * as mcpCmd from "./commands/mcp.js";
 
-const commands = [workspaceCmd, startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd];
+const commands = [startNewCmd, statusCmd, stopCmd, autoApproveCmd, sessionsCmd, clearSessionsCmd, lastCmd, queueCmd, usageCmd, modelCmd, contextCmd, mcpCmd];
 const commandMap = new Collection<
   string,
   { execute: (interaction: ChatInputCommandInteraction) => Promise<void> }

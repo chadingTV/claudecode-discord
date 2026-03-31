@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import path from "node:path";
-import type { Project, Session, SessionStatus, Workspace } from "./types.js";
+import type { Project, Session, SessionStatus } from "./types.js";
 
 const DB_PATH = path.join(process.cwd(), "data.db");
 
@@ -136,22 +136,4 @@ export function getModel(channelId: string): string | null {
   try { db.exec("ALTER TABLE projects ADD COLUMN model TEXT DEFAULT NULL"); } catch {}
   const row = db.prepare("SELECT model FROM projects WHERE channel_id = ?").get(channelId) as { model: string | null } | undefined;
   return row?.model ?? null;
-}
-
-// Workspace per guild
-export function setWorkspace(guildId: string, workspacePath: string): void {
-  db.prepare(`
-    INSERT OR REPLACE INTO workspaces (guild_id, workspace_path)
-    VALUES (?, ?)
-  `).run(guildId, workspacePath);
-}
-
-export function getWorkspace(guildId: string): Workspace | undefined {
-  return db
-    .prepare("SELECT * FROM workspaces WHERE guild_id = ?")
-    .get(guildId) as Workspace | undefined;
-}
-
-export function removeWorkspace(guildId: string): void {
-  db.prepare("DELETE FROM workspaces WHERE guild_id = ?").run(guildId);
 }
