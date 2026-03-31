@@ -14,6 +14,8 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.86",
     "better-sqlite3": "^11.0.0",
+    "chart.js": "^4.5.1",
+    "chartjs-node-canvas": "^5.0.0",
     "discord.js": "^14.19.3",
     "dotenv": "^17.2.4",
     "zod": "^4.0.0"
