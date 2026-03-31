@@ -26,9 +26,6 @@ import {
   splitMessage,
   type AskQuestionData,
 } from "./output-formatter.js";
-import { renderChart, type ChartFileConfig } from "../utils/chart.js";
-import { AttachmentBuilder } from "discord.js";
-
 type McpServerConfig = McpStdioServerConfig | McpSSEServerConfig | McpHttpServerConfig;
 
 function loadMcpServers(): Record<string, McpServerConfig> | undefined {
@@ -331,11 +328,6 @@ class SessionManager {
             return { behavior: "allow" as const, updatedInput: input };
           }
 
-          // Auto-approve .chart.json writes (harmless chart data)
-          if (toolName === "Write" && typeof input.file_path === "string" && input.file_path.endsWith(".chart.json")) {
-            return { behavior: "allow" as const, updatedInput: input };
-          }
-
           // Check auto-approve setting
           const currentProject = getProject(channelId);
           if (currentProject?.auto_approve) {
@@ -554,9 +546,6 @@ class SessionManager {
           ...(resultFile && { files: [resultFile] }),
         });
 
-        // Render and send any .chart.json files created during this turn
-        await this.sendPendingCharts(session);
-
         // Detect auth/credit errors in result and suggest re-login
         const resultAuthKeywords = ["credit balance", "not authenticated", "unauthorized", "authentication", "login required", "auth token", "expired", "not logged in", "please run /login"];
         const lowerResult = resultText.toLowerCase();
@@ -665,39 +654,6 @@ class SessionManager {
     pendingCustomInputs.delete(channelId);
 
     updateSessionStatus(channelId, "offline");
-  }
-
-  /**
-   * Scan for .chart.json files in the project directory, render them, send as images, and clean up.
-   */
-  private async sendPendingCharts(session: ActiveSession): Promise<void> {
-    const project = getProject(session.channelId);
-    if (!project) return;
-
-    const projectDir = project.project_path;
-    let files: string[];
-    try {
-      files = fs.readdirSync(projectDir).filter((f) => f.endsWith(".chart.json"));
-    } catch {
-      return;
-    }
-
-    for (const file of files) {
-      const filePath = path.join(projectDir, file);
-      try {
-        const raw = fs.readFileSync(filePath, "utf-8");
-        const config: ChartFileConfig = JSON.parse(raw);
-        const pngBuffer = await renderChart(config);
-        const chartName = file.replace(".chart.json", ".png");
-        const attachment = new AttachmentBuilder(pngBuffer, { name: chartName });
-        await session.channel.send({ files: [attachment] });
-      } catch (e) {
-        console.warn(`[chart] Failed to render ${file}:`, e instanceof Error ? e.message : e);
-      } finally {
-        // Clean up the chart JSON file
-        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-      }
-    }
   }
 
   /**
