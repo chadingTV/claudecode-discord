@@ -1,4 +1,4 @@
-import { query, type Query, type SDKControlGetContextUsageResponse } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Query, type SDKControlGetContextUsageResponse, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { TextChannel } from "discord.js";
@@ -487,6 +487,16 @@ class SessionManager {
     if (!session) return null;
     try {
       return await session.queryInstance.getContextUsage();
+    } catch {
+      return null;
+    }
+  }
+
+  async getMcpStatus(channelId: string): Promise<McpServerStatus[] | null> {
+    const session = this.sessions.get(channelId);
+    if (!session) return null;
+    try {
+      return await session.queryInstance.mcpServerStatus();
     } catch {
       return null;
     }
