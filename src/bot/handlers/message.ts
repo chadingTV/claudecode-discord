@@ -2,6 +2,7 @@ import { Message, TextChannel, Attachment, ActionRowBuilder, ButtonBuilder, Butt
 import { getProject, getWorkspace, registerProject } from "../../db/database.js";
 import { isAllowedUser, checkRateLimit } from "../../security/guard.js";
 import { sessionManager } from "../../claude/session-manager.js";
+import { getConfig } from "../../utils/config.js";
 import fs from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -67,20 +68,14 @@ export async function handleMessage(message: Message): Promise<void> {
   // Auth check (before auto-register to prevent unauthorized registration)
   if (!isAllowedUser(message.author.id)) return;
 
-  // Check if channel is registered; auto-register if workspace is set
+  // Check if channel is registered; auto-register using workspace or BASE_PROJECT_DIR
   let project = getProject(message.channelId);
   if (!project) {
     const workspace = getWorkspace(message.guild.id);
-    if (!workspace) {
-      await message.reply(L(
-        "No workspace set. An admin must run `/workspace path:<directory>` first.",
-        "워크스페이스가 설정되지 않았습니다. 관리자가 먼저 `/workspace path:<디렉토리>`를 실행해야 합니다.",
-      ));
-      return;
-    }
+    const baseDir = workspace?.workspace_path ?? getConfig().BASE_PROJECT_DIR;
 
     const channel = message.channel as TextChannel;
-    const projectPath = path.join(workspace.workspace_path, channel.name);
+    const projectPath = path.join(baseDir, channel.name);
     fs.mkdirSync(projectPath, { recursive: true });
     registerProject(message.channelId, projectPath, message.guild.id);
     project = getProject(message.channelId)!;
