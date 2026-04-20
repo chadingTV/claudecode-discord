@@ -113,6 +113,7 @@ class SessionManager {
         permissionMode: "default",
         env: { ...process.env, ANTHROPIC_API_KEY: undefined, PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ""}` },
         ...(useResume && resumeSessionId ? { resume: resumeSessionId } : {}),
+        ...(getConfig().CLAUDE_MODEL ? { model: getConfig().CLAUDE_MODEL } : {}),
 
         canUseTool: async (
           toolName: string,
