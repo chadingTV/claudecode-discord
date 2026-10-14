@@ -249,6 +249,18 @@ export function createAskUserQuestionEmbed(
   return { embed, components };
 }
 
+// Long sessions resend the whole conversation every turn, so token usage grows
+// quickly. Nudge the user (never auto-clear) at each multiple of the threshold.
+export function getTurnWarning(turnCount: number, threshold: number): string | null {
+  if (threshold <= 0 || turnCount < threshold || turnCount % threshold !== 0) {
+    return null;
+  }
+  return L(
+    `⚠️ This session has reached ${turnCount} turns. Each new message resends the whole conversation, so token usage keeps growing. If you're starting a new task, use \`/sessions\` → **Create New Session** to start fresh.`,
+    `⚠️ 이 세션이 ${turnCount}턴에 도달했습니다. 새 메시지마다 전체 대화가 다시 전송되어 토큰 사용량이 계속 늘어납니다. 새 작업을 시작한다면 \`/sessions\` → **새 세션 만들기**로 새로 시작하세요.`,
+  );
+}
+
 export function createResultEmbed(
   result: string,
   costUsd: number,

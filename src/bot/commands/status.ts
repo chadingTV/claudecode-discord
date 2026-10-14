@@ -4,6 +4,8 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getAllProjects, getSession } from "../../db/database.js";
+import type { Session } from "../../db/types.js";
+import { getConfig } from "../../utils/config.js";
 import { L } from "../../utils/i18n.js";
 
 const STATUS_EMOJI: Record<string, string> = {
@@ -12,6 +14,16 @@ const STATUS_EMOJI: Record<string, string> = {
   idle: "⚪",
   offline: "🔴",
 };
+
+export function formatSessionUsage(
+  session: Pick<Session, "turn_count" | "total_cost_usd"> | undefined,
+  showCost: boolean,
+): string {
+  const turns = `${L("Turns", "턴 수")}: ${session?.turn_count ?? 0}`;
+  if (!showCost) return turns;
+  const cost = (session?.total_cost_usd ?? 0).toFixed(4);
+  return `${turns}  |  ${L("Cost (est.)", "비용 (추정)")}: $${cost}`;
+}
 
 export const data = new SlashCommandBuilder()
   .setName("status")
@@ -48,6 +60,7 @@ export async function execute(
         `${L("Status", "상태")}: **${status}**`,
         `${L("Auto-approve", "자동 승인")}: ${project.auto_approve ? L("On", "켜짐") : L("Off", "꺼짐")}`,
         `${L("Last activity", "마지막 활동")}: ${lastActivity}`,
+        formatSessionUsage(session, getConfig().SHOW_COST),
       ].join("\n"),
       inline: false,
     });

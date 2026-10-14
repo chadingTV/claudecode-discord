@@ -15,4 +15,6 @@ export interface Session {
   status: SessionStatus;
   last_activity: string | null;
   created_at: string;
+  turn_count: number; // completed turns since this conversation started
+  total_cost_usd: number; // summed result cost across those turns
 }

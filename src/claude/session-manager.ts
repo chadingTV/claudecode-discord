@@ -8,6 +8,7 @@ import {
   getProject,
   getSession,
   setAutoApprove,
+  recordTurn,
 } from "../db/database.js";
 import { getConfig } from "../utils/config.js";
 import { L } from "../utils/i18n.js";
@@ -17,6 +18,7 @@ import {
   createResultEmbed,
   createStopButton,
   createCompletedButton,
+  getTurnWarning,
   splitMessage,
   type AskQuestionData,
 } from "./output-formatter.js";
@@ -377,6 +379,12 @@ class SessionManager {
                   "🔑 Claude Code is not logged in. Please open a terminal on the host PC and run `claude login` to authenticate, then try again.",
                   "🔑 Claude Code 로그인이 필요합니다. 호스트 PC에서 터미널을 열고 `claude login`을 실행하여 인증 후 다시 시도해 주세요.",
                 ));
+              }
+
+              const turnCount = recordTurn(dbId, resultMsg.total_cost_usd ?? 0);
+              const turnWarning = getTurnWarning(turnCount, getConfig().SESSION_TURN_WARNING);
+              if (turnWarning) {
+                await channel.send(turnWarning);
               }
 
               updateSessionStatus(channelId, "idle");

@@ -121,4 +121,4 @@ PC별로 별도 Discord 봇을 생성하여 같은 길드에 초대. 각 봇은 
 
 ## 환경 설정
 
-`.env.example`을 `.env`로 복사 후 값 설정. 필수: `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `ALLOWED_USER_IDS`, `BASE_PROJECT_DIR`. 선택: `RATE_LIMIT_PER_MINUTE` (기본값 10), `SHOW_COST` (기본값 true, Max plan 사용자는 false 권장). data.db는 첫 실행 시 자동 생성.
+`.env.example`을 `.env`로 복사 후 값 설정. 필수: `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `ALLOWED_USER_IDS`, `BASE_PROJECT_DIR`. 선택: `RATE_LIMIT_PER_MINUTE` (기본값 10), `SHOW_COST` (기본값 true, Max plan 사용자는 false 권장), `SESSION_TURN_WARNING` (기본값 30, 세션 턴 수가 이 값의 배수에 도달하면 새 세션 시작을 권장하는 경고 표시, 0이면 비활성화). data.db는 첫 실행 시 자동 생성.

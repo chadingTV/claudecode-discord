@@ -13,6 +13,8 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+  // Warn when a session reaches this many turns (and every multiple). 0 disables.
+  SESSION_TURN_WARNING: z.coerce.number().int().min(0).default(30),
   CLAUDE_MODEL: z
     .string()
     .optional()

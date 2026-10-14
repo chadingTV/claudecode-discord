@@ -29,6 +29,23 @@ export function initDatabase(): void {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  migrateDatabase(db);
+}
+
+// Add columns introduced after the initial release to existing data.db files.
+// Safe to run repeatedly.
+export function migrateDatabase(database: Database.Database): void {
+  const columns = (
+    database.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
+  ).map((c) => c.name);
+
+  if (!columns.includes("turn_count")) {
+    database.exec("ALTER TABLE sessions ADD COLUMN turn_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!columns.includes("total_cost_usd")) {
+    database.exec("ALTER TABLE sessions ADD COLUMN total_cost_usd REAL NOT NULL DEFAULT 0");
+  }
 }
 
 export function getDb(): Database.Database {
@@ -82,11 +99,36 @@ export function upsertSession(
   sessionId: string | null,
   status: SessionStatus,
 ): void {
+  // Turn/cost counters persist across updates of the same row and reset when
+  // session_id is cleared (a fresh conversation). created_at is refreshed to
+  // keep getSession()'s "latest row" ordering identical to the old REPLACE.
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO sessions (id, channel_id, session_id, status, last_activity)
+    INSERT INTO sessions (id, channel_id, session_id, status, last_activity)
     VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      channel_id = excluded.channel_id,
+      session_id = excluded.session_id,
+      status = excluded.status,
+      last_activity = excluded.last_activity,
+      created_at = datetime('now'),
+      turn_count = CASE WHEN excluded.session_id IS NULL THEN 0 ELSE sessions.turn_count END,
+      total_cost_usd = CASE WHEN excluded.session_id IS NULL THEN 0 ELSE sessions.total_cost_usd END
   `);
   stmt.run(id, channelId, sessionId, status);
+}
+
+// Record one completed turn on a session row. Returns the new turn count
+// (0 if the row does not exist).
+export function recordTurn(id: string, costUsd: number): number {
+  const row = db
+    .prepare(`
+      UPDATE sessions
+      SET turn_count = turn_count + 1, total_cost_usd = total_cost_usd + ?
+      WHERE id = ?
+      RETURNING turn_count
+    `)
+    .get(costUsd, id) as { turn_count: number } | undefined;
+  return row?.turn_count ?? 0;
 }
 
 export function getSession(channelId: string): Session | undefined {

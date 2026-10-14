@@ -23,6 +23,9 @@ import {
   getSession,
   updateSessionStatus,
   getAllSessions,
+  recordTurn,
+  migrateDatabase,
+  getDb,
 } from "./database.js";
 
 describe("database", () => {
@@ -129,6 +132,86 @@ describe("database", () => {
     it("getAllSessions returns empty for guild with no sessions", () => {
       registerProject("ch2", "/p2", "guild2");
       expect(getAllSessions("guild2")).toHaveLength(0);
+    });
+  });
+
+  // ─── Turn / cost tracking ───
+
+  describe("turn tracking", () => {
+    beforeEach(() => {
+      registerProject("ch1", "/p1", "guild1");
+    });
+
+    it("new sessions start with zero turns and cost", () => {
+      upsertSession("s1", "ch1", "sdk-1", "online");
+      const session = getSession("ch1")!;
+      expect(session.turn_count).toBe(0);
+      expect(session.total_cost_usd).toBe(0);
+    });
+
+    it("recordTurn increments turns, accumulates cost, and returns the new count", () => {
+      upsertSession("s1", "ch1", "sdk-1", "online");
+      expect(recordTurn("s1", 0.25)).toBe(1);
+      expect(recordTurn("s1", 0.5)).toBe(2);
+      const session = getSession("ch1")!;
+      expect(session.turn_count).toBe(2);
+      expect(session.total_cost_usd).toBeCloseTo(0.75);
+    });
+
+    it("recordTurn returns 0 for an unknown session row", () => {
+      expect(recordTurn("missing", 1)).toBe(0);
+    });
+
+    it("upsertSession keeps counters when the session continues", () => {
+      upsertSession("s1", "ch1", "sdk-1", "online");
+      recordTurn("s1", 0.1);
+      upsertSession("s1", "ch1", "sdk-1", "idle");
+      upsertSession("s1", "ch1", "sdk-2", "online");
+      const session = getSession("ch1")!;
+      expect(session.turn_count).toBe(1);
+      expect(session.session_id).toBe("sdk-2");
+      expect(session.status).toBe("online");
+    });
+
+    it("upsertSession resets counters when session_id is cleared (new conversation)", () => {
+      upsertSession("s1", "ch1", "sdk-1", "online");
+      recordTurn("s1", 0.1);
+      upsertSession("s1", "ch1", null, "online");
+      const session = getSession("ch1")!;
+      expect(session.turn_count).toBe(0);
+      expect(session.total_cost_usd).toBe(0);
+    });
+  });
+
+  // ─── Migration ───
+
+  describe("migrateDatabase", () => {
+    it("adds tracking columns to a legacy sessions table without losing rows", () => {
+      const db = getDb();
+      db.exec(`
+        DROP TABLE sessions;
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          channel_id TEXT REFERENCES projects(channel_id) ON DELETE CASCADE,
+          session_id TEXT,
+          status TEXT DEFAULT 'offline',
+          last_activity TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+      `);
+      registerProject("ch1", "/p1", "guild1");
+      db.prepare(
+        "INSERT INTO sessions (id, channel_id, session_id, status) VALUES ('s1', 'ch1', 'sdk-1', 'idle')",
+      ).run();
+
+      migrateDatabase(db);
+      migrateDatabase(db); // idempotent
+
+      const session = getSession("ch1")!;
+      expect(session.session_id).toBe("sdk-1");
+      expect(session.turn_count).toBe(0);
+      expect(session.total_cost_usd).toBe(0);
+      expect(recordTurn("s1", 0.2)).toBe(1);
     });
   });
 });

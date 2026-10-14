@@ -13,8 +13,33 @@ import {
   createAskUserQuestionEmbed,
   createStopButton,
   createCompletedButton,
+  getTurnWarning,
   type AskQuestionData,
 } from "./output-formatter.js";
+
+// ─── getTurnWarning ───
+
+describe("getTurnWarning", () => {
+  it("returns null below the threshold", () => {
+    expect(getTurnWarning(29, 30)).toBeNull();
+  });
+
+  it("warns exactly at the threshold, mentioning the turn count", () => {
+    const msg = getTurnWarning(30, 30);
+    expect(msg).toContain("30 turns");
+    expect(msg).toContain("/sessions");
+  });
+
+  it("warns again at each multiple of the threshold only", () => {
+    expect(getTurnWarning(31, 30)).toBeNull();
+    expect(getTurnWarning(60, 30)).toContain("60 turns");
+  });
+
+  it("never warns when the threshold is 0 (disabled)", () => {
+    expect(getTurnWarning(0, 0)).toBeNull();
+    expect(getTurnWarning(30, 0)).toBeNull();
+  });
+});
 
 // ─── formatStreamChunk ───
 

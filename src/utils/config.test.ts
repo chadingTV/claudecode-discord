@@ -13,6 +13,7 @@ describe("config", () => {
     // Clear optional vars to use defaults
     delete process.env.RATE_LIMIT_PER_MINUTE;
     delete process.env.SHOW_COST;
+    delete process.env.SESSION_TURN_WARNING;
   });
 
   afterEach(() => {
@@ -47,6 +48,17 @@ describe("config", () => {
     const { loadConfig } = await import("./config.js");
     const config = loadConfig();
     expect(config.RATE_LIMIT_PER_MINUTE).toBe(20);
+  });
+
+  it("defaults SESSION_TURN_WARNING to 30", async () => {
+    const { loadConfig } = await import("./config.js");
+    expect(loadConfig().SESSION_TURN_WARNING).toBe(30);
+  });
+
+  it("allows SESSION_TURN_WARNING=0 to disable the warning", async () => {
+    process.env.SESSION_TURN_WARNING = "0";
+    const { loadConfig } = await import("./config.js");
+    expect(loadConfig().SESSION_TURN_WARNING).toBe(0);
   });
 
   it("parses SHOW_COST as boolean", async () => {

@@ -11,16 +11,19 @@ vi.mock("../db/database.js", () => ({
   getProject: vi.fn(),
   getSession: vi.fn(),
   setAutoApprove: vi.fn(),
+  recordTurn: vi.fn(() => 0),
 }));
 
 vi.mock("../utils/config.js", () => ({
-  getConfig: vi.fn(() => ({ SHOW_COST: true })),
+  getConfig: vi.fn(() => ({ SHOW_COST: true, SESSION_TURN_WARNING: 30 })),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
 }));
 
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { getProject, getSession, recordTurn } from "../db/database.js";
 import { sessionManager } from "./session-manager.js";
 
 // Helper to create a mock TextChannel
@@ -140,6 +143,89 @@ describe("SessionManager", () => {
   describe("stopSession", () => {
     it("returns false for inactive session", async () => {
       expect(await sessionManager.stopSession("no-session")).toBe(false);
+    });
+  });
+
+  // ─── Turn tracking ───
+
+  describe("sendMessage turn tracking", () => {
+    function mockSdkStream(messages: object[]) {
+      vi.mocked(query).mockReturnValue(
+        (async function* () {
+          for (const m of messages) yield m;
+        })() as any,
+      );
+    }
+
+    beforeEach(() => {
+      vi.mocked(getProject).mockReturnValue({
+        channel_id: "ch-turns",
+        project_path: "/p",
+        guild_id: "g",
+        auto_approve: 0,
+        created_at: "",
+      });
+      vi.mocked(getSession).mockReturnValue({
+        id: "row-1",
+        channel_id: "ch-turns",
+        session_id: "sdk-1",
+        status: "idle",
+        last_activity: null,
+        created_at: "",
+        turn_count: 3,
+        total_cost_usd: 1,
+      });
+    });
+
+    it("records the completed turn and its cost on the session row", async () => {
+      mockSdkStream([
+        { type: "system", subtype: "init", session_id: "sdk-1" },
+        { type: "result", result: "done", total_cost_usd: 0.42, duration_ms: 10 },
+      ]);
+      vi.mocked(recordTurn).mockReturnValue(4);
+
+      await sessionManager.sendMessage(mockChannel("ch-turns"), "hi");
+
+      expect(recordTurn).toHaveBeenCalledTimes(1);
+      expect(recordTurn).toHaveBeenCalledWith("row-1", 0.42);
+    });
+
+    function sentTexts(channel: { send: ReturnType<typeof vi.fn> }): string[] {
+      return channel.send.mock.calls.map(([arg]) =>
+        typeof arg === "string" ? arg : (arg?.content ?? ""),
+      );
+    }
+
+    it("posts a long-session warning when the turn count hits the threshold", async () => {
+      mockSdkStream([{ type: "result", result: "done", total_cost_usd: 0, duration_ms: 1 }]);
+      vi.mocked(recordTurn).mockReturnValue(30);
+      const channel = mockChannel("ch-turns");
+
+      await sessionManager.sendMessage(channel, "hi");
+
+      expect(sentTexts(channel).some((t) => t.includes("30 turns"))).toBe(true);
+    });
+
+    it("does not warn below the threshold", async () => {
+      mockSdkStream([{ type: "result", result: "done", total_cost_usd: 0, duration_ms: 1 }]);
+      vi.mocked(recordTurn).mockReturnValue(4);
+      const channel = mockChannel("ch-turns");
+
+      await sessionManager.sendMessage(channel, "hi");
+
+      expect(sentTexts(channel).some((t) => t.includes("turns"))).toBe(false);
+    });
+
+    it("does not record a turn when the query fails before a result", async () => {
+      vi.mocked(query).mockReturnValue(
+        (async function* () {
+          throw new Error("boom");
+        })() as any,
+      );
+
+      await sessionManager.sendMessage(mockChannel("ch-turns"), "hi");
+
+      expect(recordTurn).not.toHaveBeenCalled();
     });
   });
 });
